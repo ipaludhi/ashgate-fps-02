@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASHGATE WORKS: Tactical FPS</title>
+<link rel="icon" type="image/png" href="./favicon.png">
+  ASHGATE WORKS: an original round-based tactical FPS in three.js. No third-party art, models, audio,
+  names or map: every texture is painted on a canvas in materials.js, every mesh is built in code, and
+  the yard, the rifle and the callouts (A SLAG BASIN / B KILN HOUSE) were authored for this entry.
+  Modules, one job each: main.js (input, fixed-step simulation, render loop, ?shot= still harness),
+  state.js (one mutable match state), config.js (weapon/ballistics/economy/palette tables),
+  player.js (acceleration, crouch, step-up collision), weapon.js (hitscan from the muzzle, spread and
+  recoil, headshot multiplier, FX pools), bots.js (humanoid bodies plus waypoint/sight/sound minds),
+  rounds.js (buy phase, economy, win conditions, plant and defuse), hud.js (readouts bound to state),
+  audio.js (WebAudio synthesis, no files), materials.js (procedural canvas textures), world.js (props
+  over the playable brushes), lighting.js (low warm sun, sky dome, haze), post.js (bloom, ACES, grade).
+-->
+<style>:root{--surface:#141416;--hairline:rgba(255,255,255,.10);--panel:linear-gradient(180deg,rgba(14,14,17,.78),rgba(8,8,10,.66));--ink:#e6e4e0;--muted:#9a968f;--accent:#ff4d00;--hazard:#e5a50a;--money:#8ccf6a;--enemy:#9fd8e6;--ui:system-ui,-apple-system,'Segoe UI',sans-serif;--mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#0a0a0c;color:var(--ink);font-family:var(--ui)}
+#game,#game canvas{position:fixed;inset:0;display:block}
+.gone,[hidden]{display:none!important}
+#hud{position:fixed;inset:0;pointer-events:none;font-variant-numeric:tabular-nums}
+.ui-panel{position:fixed;background:var(--panel);border:1px solid var(--hairline);border-radius:3px;padding:7px 13px;text-shadow:0 1px 3px rgba(0,0,0,.85)}
+#timer-panel{top:16px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:26px;letter-spacing:.06em;color:var(--hazard);min-width:116px;text-align:center}
+#score-panel{top:60px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:16px;font-weight:700;letter-spacing:.18em;min-width:84px;text-align:center}
+#phase-banner{top:98px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;letter-spacing:.22em;color:var(--muted);white-space:nowrap;text-shadow:0 1px 3px #000}
+#money-panel{bottom:18px;left:18px;font-family:var(--mono);font-size:22px;color:var(--money)}
+#health-panel{bottom:60px;left:18px;display:flex;align-items:center;gap:10px}
+#health-bar{width:146px;height:8px;background:#14161a;border:1px solid var(--hairline);overflow:hidden}
+#health-fill{display:block;height:100%;width:100%;background:linear-gradient(90deg,#ff3b1d,var(--accent))}
+#health-value{font-family:var(--mono);font-size:20px;font-weight:700}
+#armour-value{font-family:var(--mono);font-size:14px;color:var(--enemy)}
+#ammo-panel{bottom:18px;right:18px;font-family:var(--mono);font-size:30px;line-height:1;text-align:right;min-width:120px}
+#ammo-reserve{font-size:15px;color:var(--muted);margin-left:6px}
+#weapon-panel{bottom:64px;right:18px;font-size:11px;font-weight:600;letter-spacing:.12em;color:var(--muted);text-align:right;text-shadow:0 1px 3px #000}
+#objective{position:fixed;top:124px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--muted);white-space:nowrap;text-shadow:0 1px 3px #000}
+#objective.armed{color:#ff5a43;font-weight:700}
+#objective-fuse{position:fixed;top:142px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:22px;font-weight:700;color:#ff4433;text-shadow:0 2px 12px #000}
+#defuse-row{position:fixed;top:172px;left:50%;transform:translateX(-50%);width:190px;height:4px;background:#14161a;border:1px solid #ff4433}
+#defuse-fill{display:block;height:100%;width:0;background:var(--enemy)}
+#crosshair{position:fixed;left:50%;top:50%;width:18px;height:18px;transform:translate(-50%,-50%)}
+#crosshair::before,#crosshair::after{content:'';position:absolute;background:#fff;opacity:.9;box-shadow:0 0 2px rgba(0,0,0,.9)}
+#crosshair::before{left:50%;top:0;width:2px;height:100%;transform:translateX(-50%)}
+#crosshair::after{top:50%;left:0;height:2px;width:100%;transform:translateY(-50%)}
+#hitmarker{position:fixed;left:50%;top:50%;width:24px;height:24px;opacity:0;transform:translate(-50%,-50%);transition:opacity 60ms linear;background:linear-gradient(45deg,transparent 44%,#fff 44%,#fff 56%,transparent 56%),linear-gradient(-45deg,transparent 44%,#fff 44%,#fff 56%,transparent 56%)}
+#hitmarker.kill{background-image:linear-gradient(45deg,transparent 44%,#ff4433 44%,#ff4433 56%,transparent 56%),linear-gradient(-45deg,transparent 44%,#ff4433 44%,#ff4433 56%,transparent 56%)}
+#damage{position:fixed;inset:0;opacity:0;transition:opacity 110ms linear;background:radial-gradient(ellipse at center,rgba(190,10,0,0) 40%,rgba(190,10,0,.62) 100%)}
+#damage-dirs{position:fixed;left:50%;top:50%;width:0;height:0}
+#damage-dirs .wedge{position:absolute;left:-19px;top:-124px;width:38px;height:13px;background:linear-gradient(180deg,rgba(255,64,40,.92),rgba(255,64,40,0));transform-origin:50% 124px}
+#minimap{position:fixed;top:16px;left:16px;width:164px;height:164px;border:1px solid var(--hairline);border-radius:50%;background:rgba(6,7,9,.62);box-shadow:inset 0 0 22px rgba(0,0,0,.7)}
+#killfeed{position:fixed;top:16px;right:16px;text-align:right;font-family:var(--mono);font-size:12px}
+.feed{margin:3px 0;padding:4px 9px;background:var(--panel);border:1px solid var(--hairline);border-radius:3px;color:var(--ink)}
+.feed.mix-a{border-left:2px solid var(--accent)}
+.feed.mix-b{border-left:2px solid var(--enemy)}
+.feed-w{color:var(--muted);font-size:10px;letter-spacing:.1em;margin-right:8px}
+#radio{position:fixed;bottom:120px;left:18px;font-family:var(--mono);font-size:12px;letter-spacing:.05em;color:var(--hazard);text-shadow:0 1px 3px #000;background:rgba(0,0,0,0.35);padding:4px 8px;border-radius:2px;max-width:300px;line-height:1.4}
+#toast{position:fixed;top:62%;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:13px;text-shadow:0 2px 10px #000;color:var(--muted)}
+#round-banner{position:fixed;top:28%;left:50%;transform:translateX(-50%);font-size:30px;font-weight:700;letter-spacing:.16em;color:var(--hazard);text-shadow:0 3px 14px #000}
+.overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(4,4,6,.84);pointer-events:auto}
+.panel{background:var(--surface);border:1px solid var(--accent);border-radius:4px;padding:34px 38px;max-width:540px;text-align:center}
+h1{margin:0 0 8px;font-size:38px;color:var(--accent);letter-spacing:.12em}
+button{background:var(--accent);color:#fff;border:0;border-radius:3px;padding:14px 30px;font-size:16px;font-weight:700;letter-spacing:.1em;cursor:pointer;margin-top:18px;font-family:inherit}
+button:hover{background:#ff6a1a}
+.controls{margin-top:24px;font-size:12px;color:var(--muted);line-height:1.9;font-family:var(--mono)}
+#buy-menu{position:fixed;inset:0;background:radial-gradient(ellipse at 50% 50%,rgba(5,5,7,.88) 0%,rgba(5,5,7,.6) 58%,rgba(5,5,7,.3) 100%);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:104px;pointer-events:auto;font-family:var(--mono)}
+#buy-menu h1{font-size:30px;margin-bottom:4px}
+#buy-money{font-size:22px;color:var(--money);margin-bottom:2px}
+#buy-list{display:flex;flex-direction:column;align-items:stretch;width:430px;max-height:70vh;overflow:hidden}
+.buy-cat{margin:12px 0 5px;font-size:10px;letter-spacing:.2em;color:var(--muted)}
+.buy-item{box-sizing:border-box;background:var(--surface);border:1px solid var(--hairline);border-radius:3px;width:100%;margin:2px 0;padding:9px 18px;display:flex;justify-content:space-between;gap:14px;cursor:pointer;font-size:15px}
+.buy-item:hover:not(:disabled){border-color:var(--hazard);background:#1b1b1f}
+.buy-item:disabled{opacity:.34;cursor:not-allowed}
+.buy-item:disabled .buy-price{color:#c8503f}
+.buy-price{color:var(--money)}
+.hint{color:var(--muted);font-size:11px;margin-top:14px;letter-spacing:.06em}
+#end-overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(4,4,6,.88);pointer-events:auto}
+#end-title{font-size:44px;color:var(--accent);letter-spacing:.14em;margin:0}
+#end-copy{color:var(--muted);font-family:var(--mono)}</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="hud">
+  <div id="crosshair"></div>
+  <div id="hitmarker"></div>
+  <canvas id="minimap" width="164" height="164"></canvas>
+  <div id="killfeed"></div>
+  <div id="timer-panel" class="ui-panel"><span id="timer"></span></div>
+  <div id="score-panel" class="ui-panel"><span id="score-value"></span></div>
+  <div id="phase-banner"></div>
+  <div id="money-panel" class="ui-panel"><span id="money-value"></span></div>
+  <div id="health-panel" class="ui-panel">
+    <div id="health-bar"><span id="health-fill"></span></div>
+    <span id="health-value"></span><span id="armour-value"></span>
+  </div>
+  <div id="ammo-panel" class="ui-panel"><span id="ammo-mag"></span><span id="ammo-reserve"></span></div>
+  <div id="weapon-panel"><span id="weapon-name"></span></div>
+  <div id="radio"></div>
+  <div id="toast"></div>
+  <div id="round-banner"></div>
+  <div id="objective"></div>
+  <div id="objective-fuse" class="gone"></div>
+  <div id="defuse-row" class="gone"><span id="defuse-fill"></span></div>
+  <div id="damage"></div>
+  <div id="damage-dirs"></div>
+</div>
+<div id="buy-menu" hidden>
+  <h1>REQUISITIONS</h1>
+  <div id="buy-money">$0</div>
+  <div id="buy-list"></div>
+  <p class="hint">click a line to buy · B or ESC closes · buy phase only</p>
+</div>
+<div id="end-overlay" hidden>
+  <h1 id="end-title">MATCH OVER</h1>
+  <p id="end-copy"></p>
+  <button id="end-restart">PLAY AGAIN</button>
+</div>
+<div id="overlay" class="overlay">
+  <div class="panel">
+    <h1 id="overlay-title">ASHGATE WORKS</h1>
+    <p id="overlay-copy">Ember dusk on the yard. Plant the charge on the basin or the kiln before the fuse burns out.</p>
+    <button id="play">ENGAGE</button>
+    <div class="controls">WASD move · SHIFT sprint · C crouch · SPACE jump · mouse look · click fire · R reload<br>
+      B buy menu · 1 rifle · 2 pistol · 4 frag (hold E to arm the charge) · 5 smoke · ENTER restart</div>
+  </div>
+</div>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js" } }
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+[
+  { "name": "1-yard-firefight.jpg", "query": "?shot=firefight&seed=1" },
+  { "name": "2-requisitions.jpg",   "query": "?shot=buy&seed=1" },
+  { "name": "3-charge-planted.jpg", "query": "?shot=charge&seed=1" },
+  { "name": "4-squad-push.jpg",     "query": "?shot=push&seed=1" }
+]
