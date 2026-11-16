@@ -3,7 +3,8 @@ import { TUNE, ECONOMY, WEAPONS, GRENADES, ARMOUR, BUY_LIST } from './config.js'
 import { state, resetMatch, reviveAll, teamAlive, actors, actorById, awardMoney, pushKill, sayRadio, noteEvent } from './state.js';
 import { giveWeapon } from './weapon.js';
 import { SITE_ANCHORS, SPAWNS } from './map.js';
-let WORLD = null;                                  
+let WORLD = null;
+let idleT = 0;                                     
 export const hooks = { onRoundStart: null, onRoundEnd: null };
 export function bind(world) { WORLD = world; }
 const roundClock = () => Math.max(0, Math.ceil(state.phaseTime));
@@ -32,6 +33,7 @@ function beginRound() {
   if (hooks.onRoundStart) hooks.onRoundStart();
   state.phaseTime = TUNE.buyTime;
   state.bombCarrier = state.player.id;
+  idleT = 0;
   sayRadio('BUY PHASE — ' + TUNE.buyTime + 's', 'n');
   noteEvent('round-start', state.round);
 }
@@ -49,13 +51,22 @@ function liveStep(dt) {
   if (state.bombCarrier != null) {
     const c = actorById(state.bombCarrier);
     if (!c || !c.alive) handBomb();
+    else if (c === state.player && !state.bomb) {
+      // Carrier manusia yang diam (AFK/ngobrol) tidak boleh mengunci ronde: charge dioper ke bot.
+      const sp = Math.hypot(c.vx || 0, c.vz || 0);
+      if (sp < 0.7 && c.onGround !== false) {
+        idleT += dt;
+        if (idleT >= TUNE.bombIdleHandoff) { handBomb(true); idleT = 0; }
+      } else idleT = 0;
+    }
   }
   if (state.bomb && !state.bomb.exploded) {
     state.bomb.fuse -= dt;
     if (state.bomb.fuse <= 0) {
       state.bomb.exploded = true;
       noteEvent('detonation', state.bomb.site);
-      pushKill('CHARGE', 'home', 'SLAG BASIN', 'away', 'detonation', false, false);
+      const siteName = (SITE_ANCHORS.find((s) => s.id === state.bomb.site) || { name: state.bomb.site }).name;
+      pushKill('CHARGE', 'home', siteName, 'away', 'detonation', false, false);
       return endRound('home', 'detonation');
     }
   }
@@ -95,8 +106,10 @@ function nextRound() {
 export function restart(seed) {
   startMatch(WORLD, (seed >>> 0) || 1);
 }
-export function handBomb() {
-  const next = actors().find((a) => a.alive && a.team === 'home');
+export function handBomb(preferBot) {
+  const alive = actors().filter((a) => a.alive && a.team === 'home');
+  const pool = preferBot ? alive.filter((a) => a !== state.player) : alive;
+  const next = (pool.length ? pool : alive).find((a) => a.alive && a.team === 'home');
   state.bombCarrier = next ? next.id : null;
 }
 export function autoBuy() {

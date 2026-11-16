@@ -6,6 +6,7 @@ const $ = (id) => document.getElementById(id);
 let el = {};
 let onBuy = null, onRestart = null, colliders = [];
 function setText(node, v) { if (node && node._v !== v) { node._v = v; node.textContent = v; } }
+function teamName(t) { return TEAMS[t] ? TEAMS[t].name : String(t).toUpperCase(); }
 function setStyle(node, prop, v) { if (node && node._s !== v + prop) { node._s = v + prop; node.style[prop] = v; } }
 export function mount(opts) {
   opts = opts || {};
@@ -69,7 +70,7 @@ function renderReadouts() {
   setText(el.score, state.score.home + ' : ' + state.score.away);
   setText(el.money, '$' + Math.floor(state.money[p.team]));
   setText(el.hp, String(Math.max(0, Math.round(p.hp))));
-  setText(el.armour, p.armour > 0 ? '+' + Math.round(p.armour) : p.helmet ? 'HELM' : '+0');
+  setText(el.armour, p.armour > 0 ? '+' + Math.round(p.armour) : (p.helmet ? 'HELM' : '\u2014'));
   setStyle(el.hpFill, 'width', Math.max(0, Math.min(100, p.hp)) + '%');
   const wp = WEAPONS[p.weapon] || WEAPONS.pipit;
   const mag = p.mags[p.weapon] || { mag: 0, reserve: 0 };
@@ -102,11 +103,11 @@ function renderFeed() {
 function renderBanners() {
   setText(el.radio, state.radio && state.elapsed - state.radio.time < HUD.radioLife ? state.radio.text : '');
   setText(el.toast, state.toast ? state.toast.text : '');
-  setText(el.banner, state.phase === 'roundend' ? (state.roundWinner === 'home' ? 'PYRE WIN THE ROUND' : 'QUENCH WIN THE ROUND') : '');
+  setText(el.banner, state.phase === 'roundend' ? teamName(state.roundWinner) + ' WIN THE ROUND' : '');
   const over = state.phase === 'matchover';
   if (el.end && el.end.hasAttribute('hidden') === over) el.end.toggleAttribute('hidden', !over);
   if (over) {
-    setText(el.endTitle, state.matchWinner === 'draw' ? 'DRAW' : (state.matchWinner === 'home' ? 'PYRE WIN THE MATCH' : 'QUENCH WIN THE MATCH'));
+    setText(el.endTitle, state.matchWinner === 'draw' ? 'DRAW' : teamName(state.matchWinner) + ' WIN THE MATCH');
     setText(el.endCopy, 'Final score ' + state.score.home + ' : ' + state.score.away + '  ·  press ENTER to play again');
   }
   const hm = state.hitmarker > 0;
@@ -131,7 +132,7 @@ function renderObjective() {
   } else if (state.phase === 'buy') {
     text = 'BUY PHASE';
   } else if (state.phase === 'roundend' || state.phase === 'matchover') {
-    text = state.roundWinner === 'home' ? 'ROUND WON  ·  PYRE' : 'ROUND LOST  ·  QUENCH';
+    text = state.roundWinner === 'home' ? 'ROUND WON  ·  ' + teamName('home') : 'ROUND LOST  ·  ' + teamName('away');
   }
   if (el.objective) {
     el.objective.classList.toggle('gone', !text);
